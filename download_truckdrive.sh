@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Compatible with bash 3.2+ (macOS default), bash 4+, and zsh (run directly or via bash).
+set -eu
+if (set -o pipefail) 2>/dev/null; then
+  set -o pipefail
+fi
 
 BASE_URL="https://d3ehgyu1hepsur.cloudfront.net"
 PREFIX="TruckDrive/"
@@ -9,6 +13,7 @@ JOBS=4
 DOWNLOADER="auto"          # auto, aria2c, curl
 ARIA2_CONNECTIONS=8
 YES=false
+UNZIP=false
 
 download_radar=false
 download_camera=false
@@ -21,10 +26,12 @@ download_accumulated_gt_depth=false
 SCENES=()
 ALL_SCENES=false
 
+SCRIPT_NAME="${0##*/}"
+
 print_help() {
   cat <<EOF
 Usage:
-  bash download_truckdrive.sh [options]
+  ./${SCRIPT_NAME} [options]
 
 Options:
   --out DIR                     Output directory. Default: ./TruckDrive_download
@@ -32,6 +39,8 @@ Options:
   --downloader auto|aria2c|curl Downloader. Default: auto
   --aria2-connections N         Connections per file for aria2c. Default: 8
   -y, --yes                     Do not ask before downloading
+  --unzip                       Extract downloaded .zip files into the scene layout
+                                expected by the dataset viewer (see dataset_viewer/README.md)
 
   --scene scene_28_1            Download one scene. Can be repeated.
   --all-scenes                  Download all scenes under TruckDrive/.
@@ -48,12 +57,148 @@ Options:
   -h, --help                    Show this help message
 
 Examples:
-  bash download_truckdrive.sh --out /opt/dlami/nvme/TruckDrive_download --all-modalities --scene scene_28_1
+  ./${SCRIPT_NAME} --out ./TruckDrive_download --all-modalities --scene scene_28_1 --unzip -y
 
-  bash download_truckdrive.sh --out /opt/dlami/nvme/TruckDrive_download --all-modalities --scene scene_28_1 --jobs 4 --downloader auto
+  ./${SCRIPT_NAME} --out ./TruckDrive_download --all-modalities --scene scene_28_1 --jobs 4 --downloader auto
 
-  bash download_truckdrive.sh --all-scenes --all-modalities --jobs 4 --downloader aria2c --aria2-connections 8
+  ./${SCRIPT_NAME} --all-scenes --all-modalities --jobs 4 --downloader aria2c --aria2-connections 8 --unzip -y
 EOF
+}
+
+# Extract one modality archive into its scene directory (viewer layout).
+unzip_modality_archive() {
+  local _zip_path="$1"
+  python3 - "${_zip_path}" <<'PY'
+import shutil
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+
+zip_path = Path(sys.argv[1]).resolve()
+scene_dir = zip_path.parent
+modality = zip_path.stem
+scene_name = scene_dir.name
+dest = scene_dir / modality
+
+if dest.is_dir() and any(dest.iterdir()):
+    print(f"[unzip] skip (exists): {dest}")
+    raise SystemExit(0)
+
+if not zip_path.is_file():
+    print(f"[unzip] skip (missing): {zip_path}")
+    raise SystemExit(0)
+
+def move_into_dest(src: Path, dest: Path) -> None:
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.move(str(src), str(dest))
+
+
+def merge_tree_into_dest(src_dir: Path, dest: Path) -> None:
+    dest.mkdir(parents=True, exist_ok=True)
+    for child in sorted(src_dir.iterdir()):
+        target = dest / child.name
+        if target.exists():
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+        shutil.move(str(child), str(target))
+
+
+print(f"[unzip] {zip_path}")
+with tempfile.TemporaryDirectory(prefix="truckdrive_unzip_") as tmp:
+    tmp_path = Path(tmp)
+    with zipfile.ZipFile(zip_path) as zf:
+        if not zf.namelist():
+            raise SystemExit(0)
+        zf.extractall(tmp_path)
+
+    # Some archives wrap content in <modality>/ or <scene>/<modality>/.
+    matches = [
+        p for p in tmp_path.rglob(modality) if p.is_dir() and p.name == modality
+    ]
+    scoped = [p for p in matches if scene_name in p.parts]
+    if scoped:
+        matches = scoped
+    if len(matches) == 1:
+        move_into_dest(matches[0], dest)
+        raise SystemExit(0)
+
+    direct = tmp_path / modality
+    if direct.is_dir():
+        move_into_dest(direct, dest)
+        raise SystemExit(0)
+
+    # Public TruckDrive zips usually place modality contents at the archive root
+    # (e.g. radar.zip -> conti542/..., calibrations.zip -> calib_*.json).
+    if any(tmp_path.iterdir()):
+        merge_tree_into_dest(tmp_path, dest)
+        raise SystemExit(0)
+
+print(f"[unzip] warning: archive is empty: {zip_path}", file=sys.stderr)
+raise SystemExit(1)
+PY
+}
+
+unzip_downloaded_archives() {
+  local _key
+  local _zip_path
+  local _status=0
+
+  echo
+  echo "Extracting archives for dataset viewer layout..."
+
+  for _key in "$@"; do
+    case "${_key}" in
+      *.zip) ;;
+      *) continue ;;
+    esac
+
+    _zip_path="${OUT_DIR}/${_key}"
+    if ! unzip_modality_archive "${_zip_path}"; then
+      _status=1
+    fi
+  done
+
+  return "${_status}"
+}
+
+viewer_dataset_root() {
+  local _first_key="$1"
+  local _relative_root
+
+  _relative_root="${_first_key%%/*}"
+  if [ -n "${_relative_root}" ] && [ "${_relative_root}" != "$(basename "${_first_key}")" ]; then
+    printf "%s/%s" "${OUT_DIR}" "${_relative_root}"
+  else
+    printf "%s" "${OUT_DIR}"
+  fi
+}
+
+# Portable replacement for bash 4+ mapfile / readarray (reads newline-delimited lines into an array).
+read_lines_into() {
+  local _arr_name="$1"
+  local _line
+  eval "${_arr_name}=()"
+  while IFS= read -r _line || [ -n "${_line}" ]; do
+    case "${_line}" in
+      "") ;;
+      *) eval "${_arr_name}+=(\"\${_line}\")" ;;
+    esac
+  done
+}
+
+is_wanted_modality() {
+  local _filename="$1"
+  local _f
+  for _f in "${MODALITY_FILES[@]}"; do
+    if [ "${_filename}" = "${_f}" ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -80,6 +225,11 @@ while [[ $# -gt 0 ]]; do
 
     -y|--yes)
       YES=true
+      shift
+      ;;
+
+    --unzip)
+      UNZIP=true
       shift
       ;;
 
@@ -142,6 +292,12 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       print_help
       exit 0
+      ;;
+
+    --upzip)
+      echo "Unknown option: --upzip (did you mean --unzip?)"
+      print_help
+      exit 1
       ;;
 
     *)
@@ -338,16 +494,27 @@ download_key_curl() {
 }
 
 download_with_curl_parallel() {
-  export BASE_URL OUT_DIR
-  export -f urlencode_path
-  export -f download_key_curl
+  local _key
+  local _running=0
 
-  printf "%s\0" "$@" | xargs -0 -n 1 -P "$JOBS" bash -c 'download_key_curl "$1"' _
+  for _key in "$@"; do
+    while [ "${_running}" -ge "${JOBS}" ]; do
+      if wait -n 2>/dev/null; then
+        _running=$((_running - 1))
+      else
+        wait || true
+        _running=0
+      fi
+    done
+    download_key_curl "${_key}" &
+    _running=$((_running + 1))
+  done
+  wait
 }
 
 download_with_aria2c() {
   local input_file
-  input_file="$(mktemp /tmp/truckdrive_aria2_XXXXXX.txt)"
+  input_file="$(mktemp "${TMPDIR:-/tmp}/truckdrive_aria2.XXXXXX")"
 
   local queued=0
 
@@ -425,6 +592,7 @@ echo "Remote: ${BASE_URL}/?prefix=${PREFIX}"
 echo "Output: ${OUT_DIR}"
 echo "Jobs: ${JOBS}"
 echo "Downloader: ${DOWNLOADER}"
+echo "Unzip: ${UNZIP}"
 echo
 
 MODALITY_FILES=()
@@ -437,19 +605,21 @@ MODALITY_FILES=()
 [[ "$download_annotations" == true ]] && MODALITY_FILES+=("annotations.zip")
 [[ "$download_accumulated_gt_depth" == true ]] && MODALITY_FILES+=("accumulated_gt_depth.zip")
 
-declare -A WANTED_FILES=()
-for f in "${MODALITY_FILES[@]}"; do
-  WANTED_FILES["$f"]=1
-done
-
 SCENES_TO_SCAN=()
 
 if [[ "${#SCENES[@]}" -gt 0 ]]; then
   SCENES_TO_SCAN=("${SCENES[@]}")
+elif [[ "${ALL_SCENES}" == true ]]; then
+  echo "Listing all scenes under ${PREFIX}"
+  read_lines_into SCENES_TO_SCAN < <(
+    list_prefixes_for_prefix "${PREFIX}" "/" \
+      | grep -o "scene_[^/]*" \
+      | sort -u
+  )
 else
   echo "No explicit --scene provided; listing all scenes under ${PREFIX}"
-  mapfile -t SCENES_TO_SCAN < <(
-    list_prefixes_for_prefix "$PREFIX" "/" \
+  read_lines_into SCENES_TO_SCAN < <(
+    list_prefixes_for_prefix "${PREFIX}" "/" \
       | grep -o "scene_[^/]*" \
       | sort -u
   )
@@ -466,19 +636,22 @@ for scene_name in "${SCENES_TO_SCAN[@]}"; do
   scene_full_prefix="${PREFIX}${scene_name}/"
 
   echo "[list] ${scene_full_prefix}"
-  mapfile -t SCENE_FILES < <(list_keys_for_prefix "$scene_full_prefix")
+  SCENE_FILES=()
+  read_lines_into SCENE_FILES < <(list_keys_for_prefix "${scene_full_prefix}")
 
   for file in "${SCENE_FILES[@]}"; do
-    filename="$(basename "$file")"
+    filename="$(basename "${file}")"
 
-    if [[ -n "${WANTED_FILES[$filename]:-}" ]]; then
-      SELECTED_KEYS+=("$file")
+    if is_wanted_modality "${filename}"; then
+      SELECTED_KEYS+=("${file}")
     fi
   done
 done
 
 if [[ "${#SELECTED_KEYS[@]}" -gt 0 ]]; then
-  mapfile -t SELECTED_KEYS < <(printf "%s\n" "${SELECTED_KEYS[@]}" | sort -u)
+  SORTED_KEYS=()
+  read_lines_into SORTED_KEYS < <(printf "%s\n" "${SELECTED_KEYS[@]}" | sort -u)
+  SELECTED_KEYS=("${SORTED_KEYS[@]}")
 fi
 
 if [[ "${#SELECTED_KEYS[@]}" -eq 0 ]]; then
@@ -500,8 +673,13 @@ echo "Matched ${#SELECTED_KEYS[@]} files:"
 printf "  %s\n" "${SELECTED_KEYS[@]}"
 echo
 
-if [[ "$YES" != true ]]; then
-  read -r -p "Proceed with download? [y/N] " answer
+if [[ "${YES}" != true ]]; then
+  if [[ "${UNZIP}" == true ]]; then
+    printf "Proceed with download and unzip? [y/N] "
+  else
+    printf "Proceed with download? [y/N] "
+  fi
+  read -r answer
 
   case "$answer" in
     y|Y|yes|YES)
@@ -539,6 +717,18 @@ case "$DOWNLOADER" in
     ;;
 esac
 
+if [[ "${UNZIP}" == true ]]; then
+  if ! unzip_downloaded_archives "${SELECTED_KEYS[@]}"; then
+    exit 1
+  fi
+fi
+
 echo
 echo "Done."
 echo "Files saved under: ${OUT_DIR}"
+if [[ "${UNZIP}" == true ]]; then
+  VIEWER_ROOT="$(viewer_dataset_root "${SELECTED_KEYS[0]}")"
+  echo "Viewer --root-dir: ${VIEWER_ROOT}"
+  echo "Example:"
+  echo "  cd dataset_viewer && uv run python entrypoint.py --root-dir ${VIEWER_ROOT} --recording scene_28_1"
+fi

@@ -29,27 +29,55 @@ See [`LICENSE.txt`](./LICENSE.txt) for the full license text.
 This devkit is distributed independently of the TruckDrive Dataset. The dataset is governed by separate license terms. See the [Dataset Repository](http://torc-ai.github.io/TruckDrive) for details.
 
 ## Downloading the TruckDrive Dataset
-To download the dataset use the provided [bash script](download_truckdrive.sh).
+To download the dataset use the provided [download script](download_truckdrive.sh). It runs on **bash 3.2+** (including macOS) and **zsh**; `python3` and `curl` are required.
+
 For faster downloads, install `aria2` first:
+
+**Linux (Debian/Ubuntu):**
 ```bash
 sudo apt update
 sudo apt install -y aria2
 ```
+
+**macOS (Homebrew):**
+```bash
+brew install aria2
+```
+
 Download the full dataset:
 ```bash
-bash download_truckdrive.sh \
-  --out /PATH/TO/TruckDrive \
+chmod +x download_truckdrive.sh
+./download_truckdrive.sh \
+  --out /PATH/TO/TruckDrive_download \
   --all-scenes \
-  --all-modalities 
+  --all-modalities
 ```
+
+Add `--unzip` to extract each modality zip into the scene layout used by the [dataset viewer](dataset_viewer/README.md) (recommended):
+
+```bash
+./download_truckdrive.sh \
+  --out /PATH/TO/TruckDrive_download \
+  --scene scene_28_1 \
+  --all-modalities \
+  --unzip \
+  -y
+```
+
+After a download with `--unzip`, point the viewer at `--root-dir /PATH/TO/TruckDrive_download/TruckDrive` (the `TruckDrive/` folder inside your output directory).
+
 By default, the script uses aria2c automatically if it is installed, with --jobs 4 and --aria2-connections 8, otherwise it defaults to curl (slower).
+
 To download only one scene:
 ```bash
-bash download_truckdrive.sh \
-  --out /PATH/TO/TruckDrive \
+./download_truckdrive.sh \
+  --out /PATH/TO/TruckDrive_download \
   --scene scene_28_1 \
-  --all-modalities 
+  --all-modalities \
+  --unzip \
+  -y
 ```
+
 To download only specific folders, replace --all-modalities with options such as:
 --camera --lidar --radar --poses --calibration --annotations --accumulated-gt-depth
 

@@ -13,3 +13,9 @@ __pycache__/
 # Environments
 .env
 .venv
+
+# User configuration files
+.python-version
+.env
+.envrc
+mise.toml

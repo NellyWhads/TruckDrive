@@ -100,60 +100,48 @@ In the 3D Open3D window, the selected 3D sensor still controls the timeline, syn
 
 For 2D visualization, the viewer does **not** use the Open3D display frame. Instead, it projects directly from the annotation or lane-line frame into the selected camera frame using `calib_tf_tree_full.json` and the corresponding camera calibration JSON.
 
+## Downloading Data for the Viewer
+
+From the repository root, use `download_truckdrive.sh` with `--unzip` so each scene contains the extracted folders below (not just `.zip` files):
+
+```bash
+./download_truckdrive.sh \
+  --out /PATH/TO/TruckDrive_download \
+  --scene scene_28_1 \
+  --all-modalities \
+  --unzip \
+  -y
+```
+
+Downloads are stored as `TruckDrive/<scene>/` under your output directory. Use that `TruckDrive` path as the viewer `--root-dir` (for example `/PATH/TO/TruckDrive_download/TruckDrive`).
+
 ## Environment Setup
 
-Create a Conda environment:
+Install [uv](https://docs.astral.sh/uv/), then from this directory (`dataset_viewer/`):
 
 ```bash
-conda create -n truckdrive_visualizer python=3.11 -y
-conda activate truckdrive_visualizer
+uv sync
 ```
 
-Configure Conda to use `conda-forge` for this environment:
+This creates a local `.venv` with **Python 3.11** and installs the dependencies from `pyproject.toml` (including Open3D and PyQt5).
+
+Optional video export backends:
 
 ```bash
-conda config --env --add channels conda-forge
-conda config --env --set channel_priority strict
-```
-
-Install the main dependencies:
-
-```bash
-conda install -y \
-  numpy \
-  pandas \
-  scipy \
-  scikit-learn \
-  matplotlib \
-  pillow \
-  shapely \
-  pyquaternion \
-  pyqt \
-  imageio
-```
-
-Install Open3D with pip:
-
-```bash
-python -m pip install open3d
-```
-
-Optional video export plugins:
-
-```bash
-python -m pip install "imageio[ffmpeg]"
-python -m pip install "imageio[pyav]"
+uv sync --extra video
 ```
 
 ## Running the Viewer
 
-From the dataset viewer folder, run:
+From the dataset viewer folder:
 
 ```bash
-python entrypoint.py \
-  --root-dir /your_path_to/TruckDrivePublic \
+uv run python entrypoint.py \
+  --root-dir /PATH/TO/TruckDrive_download/TruckDrive \
   --recording scene_28_1
 ```
+
+(`--root-dir` is the directory that contains scene folders such as `scene_28_1/`, not the parent download folder.)
 
 ## Viewer Controls
 
@@ -281,16 +269,10 @@ vx0, vy0, vz0
 
 If the Open3D window opens but no point cloud is visible, select another sensor once or press **Next**. The viewer should then load the current synchronized frame.
 
-If video export fails, install one of the optional imageio backends:
+If video export fails, install the optional imageio backends:
 
 ```bash
-python -m pip install "imageio[ffmpeg]"
-```
-
-or:
-
-```bash
-python -m pip install "imageio[pyav]"
+uv sync --extra video
 ```
 
 If PyQt fails to start on a remote machine, make sure your display forwarding or virtual display setup is configured correctly.
