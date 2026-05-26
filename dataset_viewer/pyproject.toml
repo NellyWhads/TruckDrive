@@ -8,14 +8,11 @@ dependencies = [
     "imageio",
     "matplotlib",
     "numpy",
-    "open3d",
-    "pandas",
+    "open3d>=0.18",
     "pillow",
     "pyquaternion",
-    "PyQt5",
-    "scikit-learn",
+    "PyQt5>=5.15",
     "scipy",
-    "shapely",
 ]
 
 [project.optional-dependencies]

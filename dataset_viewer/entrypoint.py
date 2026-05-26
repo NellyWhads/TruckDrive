@@ -1,5 +1,12 @@
 import os
 import sys
+import types
+
+# The viewer only uses Open3D geometry/visualization. The default package import
+# also loads open3d.ml (sklearn/scipy/pandas), which is slow and can look hung.
+if "open3d.ml" not in sys.modules:
+    sys.modules["open3d.ml"] = types.ModuleType("open3d.ml")
+
 import numpy as np
 import open3d as o3d
 import json
@@ -269,6 +276,36 @@ def choose_best_rotation_upright_to_stored(
         if score_inside(u_cw, v_cw, Hs, Ws) >= score_inside(u_ccw, v_ccw, Hs, Ws)
         else "ccw"
     )
+
+
+def get_overlay_font(size: int = 24) -> ImageFont.ImageFont:
+    """Font for 2D box labels (DejaVuSans.ttf is not on PATH on most macOS installs)."""
+    size = max(12, min(int(size), 72))
+    try:
+        import matplotlib.font_manager as fm
+
+        path = fm.findfont(fm.FontProperties(family="DejaVu Sans"))
+        if path and os.path.isfile(path):
+            return ImageFont.truetype(path, size)
+    except Exception:
+        pass
+
+    if sys.platform == "darwin":
+        for path, index in [
+            ("/System/Library/Fonts/Helvetica.ttc", 0),
+            ("/Library/Fonts/Arial.ttf", 0),
+            ("/System/Library/Fonts/Supplemental/Arial.ttf", 0),
+        ]:
+            if os.path.isfile(path):
+                try:
+                    return ImageFont.truetype(path, size, index=index)
+                except OSError:
+                    continue
+
+    try:
+        return ImageFont.truetype("DejaVuSans.ttf", size)
+    except OSError:
+        return ImageFont.load_default()
 
 
 def create_obb_lineset(x, y, z, l, w, h, yaw_deg, color=[1.0, 0.0, 0.0]):
@@ -2163,6 +2200,8 @@ class PointCloudVisualizer(QWidget):
 
     def draw_boxes_on_image(self, pil_image, label_idx, camera_topic):
         draw = ImageDraw.Draw(pil_image)
+        img_w, img_h = pil_image.size
+        label_font = get_overlay_font(size=max(16, min(img_w, img_h) // 40))
 
         json_file_path = os.path.join(self.annos_folder, self.annos[label_idx])
         if not os.path.exists(json_file_path):
@@ -2260,8 +2299,7 @@ class PointCloudVisualizer(QWidget):
                     p1 = (int(round(x1)), int(round(y1)))
                     p2 = (int(round(x2)), int(round(y2)))
                     draw.line([p1, p2], fill=color, width=2)
-                font = ImageFont.truetype("DejaVuSans.ttf", 60)
-                draw.text(p1, str(tracking_id), color, font=font)
+                draw.text(p1, str(tracking_id), fill=color, font=label_font)
             best_box_2d = b.get(short_camera_name, None)
             w_c, h_c = center_crop_lookup[short_camera_name]
             if best_box_2d is not None:

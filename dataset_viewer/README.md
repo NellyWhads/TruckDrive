@@ -123,7 +123,7 @@ Install [uv](https://docs.astral.sh/uv/), then from this directory (`dataset_vie
 uv sync
 ```
 
-This creates a local `.venv` with **Python 3.11** and installs the dependencies from `pyproject.toml` (including Open3D and PyQt5).
+This creates a local `.venv` with **Python 3.11** and installs pinned dependencies from `pyproject.toml` (aligned with the original conda-forge README: NumPy 1.26, Open3D 0.18, PyQt5, etc.). Re-run `uv sync` after pulling changes to refresh the lockfile.
 
 Optional video export backends:
 
@@ -142,6 +142,12 @@ uv run python entrypoint.py \
 ```
 
 (`--root-dir` is the directory that contains scene folders such as `scene_28_1/`, not the parent download folder.)
+
+### macOS notes
+
+- Run from **Terminal.app** if the 3D window fails in an IDE terminal (PyQt + Open3D; see [Open3D #4840](https://github.com/isl-org/Open3D/issues/4840)).
+- Use `uv sync` so versions match `uv.lock` (manual `uv pip install` is overwritten on the next `uv run`).
+- Click **Load 3D Bounding Boxes** for 3D overlays; use **Visualize boxes in 2D** for the image view.
 
 ## Viewer Controls
 
