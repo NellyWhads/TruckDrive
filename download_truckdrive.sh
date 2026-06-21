@@ -34,7 +34,8 @@ Usage:
   ./${SCRIPT_NAME} [options]
 
 Options:
-  --out DIR                     Output directory. Default: ./TruckDrive_download
+  --out DIR                     Dataset root directory (scene folders are written here).
+                                Default: ./TruckDrive_download
   --jobs N                      Parallel file downloads. Default: 4
   --downloader auto|aria2c|curl Downloader. Default: auto
   --aria2-connections N         Connections per file for aria2c. Default: 8
@@ -156,7 +157,7 @@ unzip_downloaded_archives() {
       *) continue ;;
     esac
 
-    _zip_path="${OUT_DIR}/${_key}"
+    _zip_path="$(local_path_for_key "${_key}")"
     if ! unzip_modality_archive "${_zip_path}"; then
       _status=1
     fi
@@ -165,16 +166,17 @@ unzip_downloaded_archives() {
   return "${_status}"
 }
 
-viewer_dataset_root() {
-  local _first_key="$1"
-  local _relative_root
+# Map an S3 object key to a local path under OUT_DIR (strip the remote TruckDrive/ prefix).
+local_path_for_key() {
+  local _key="$1"
+  local _relative="${_key}"
 
-  _relative_root="${_first_key%%/*}"
-  if [ -n "${_relative_root}" ] && [ "${_relative_root}" != "$(basename "${_first_key}")" ]; then
-    printf "%s/%s" "${OUT_DIR}" "${_relative_root}"
-  else
-    printf "%s" "${OUT_DIR}"
-  fi
+  case "${_relative}" in
+    "${PREFIX}"*) _relative="${_relative#${PREFIX}}" ;;
+    TruckDrive/*) _relative="${_relative#TruckDrive/}" ;;
+  esac
+
+  printf "%s/%s" "${OUT_DIR}" "${_relative}"
 }
 
 # Portable replacement for bash 4+ mapfile / readarray (reads newline-delimited lines into an array).
@@ -467,7 +469,8 @@ download_key_curl() {
   encoded_key="$(urlencode_path "$key")"
 
   local url="${BASE_URL}/${encoded_key}"
-  local dst="${OUT_DIR}/${key}"
+  local dst
+  dst="$(local_path_for_key "$key")"
   local part="${dst}.part"
 
   mkdir -p "$(dirname "$dst")"
@@ -523,7 +526,8 @@ download_with_aria2c() {
     encoded_key="$(urlencode_path "$key")"
 
     local url="${BASE_URL}/${encoded_key}"
-    local dst="${OUT_DIR}/${key}"
+    local dst
+    dst="$(local_path_for_key "$key")"
     local dir
     local base
 
@@ -576,7 +580,8 @@ download_with_aria2c() {
   rm -f "$input_file"
 
   for key in "$@"; do
-    local dst="${OUT_DIR}/${key}"
+    local dst
+    dst="$(local_path_for_key "$key")"
     local part="${dst}.part"
 
     if [[ -f "$part" && ! -f "${part}.aria2" ]]; then
@@ -657,14 +662,10 @@ fi
 if [[ "${#SELECTED_KEYS[@]}" -eq 0 ]]; then
   echo "No files matched the selected scenes/modalities."
   echo
-  echo "Expected files like:"
+  echo "Expected remote keys like:"
   echo "  TruckDrive/scene_28_1/radar.zip"
-  echo "  TruckDrive/scene_28_1/camera.zip"
-  echo "  TruckDrive/scene_28_1/lidar.zip"
-  echo "  TruckDrive/scene_28_1/poses.zip"
-  echo "  TruckDrive/scene_28_1/calibrations.zip"
-  echo "  TruckDrive/scene_28_1/annotations.zip"
-  echo "  TruckDrive/scene_28_1/accumulated_gt_depth.zip"
+  echo "Local layout under --out:"
+  echo "  scene_28_1/radar.zip"
   exit 1
 fi
 
@@ -727,8 +728,7 @@ echo
 echo "Done."
 echo "Files saved under: ${OUT_DIR}"
 if [[ "${UNZIP}" == true ]]; then
-  VIEWER_ROOT="$(viewer_dataset_root "${SELECTED_KEYS[0]}")"
-  echo "Viewer --root-dir: ${VIEWER_ROOT}"
+  echo "Viewer --root-dir: ${OUT_DIR}"
   echo "Example:"
-  echo "  cd dataset_viewer && uv run python entrypoint.py --root-dir ${VIEWER_ROOT} --recording scene_28_1"
+  echo "  cd dataset_viewer && uv run python entrypoint.py --root-dir ${OUT_DIR} --recording scene_28_1"
 fi

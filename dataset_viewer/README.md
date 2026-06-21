@@ -113,7 +113,7 @@ From the repository root, use `download_truckdrive.sh` with `--unzip` so each sc
   -y
 ```
 
-Downloads are stored as `TruckDrive/<scene>/` under your output directory. Use that `TruckDrive` path as the viewer `--root-dir` (for example `/PATH/TO/TruckDrive_download/TruckDrive`).
+Downloads are stored as `<scene>/` directly under your `--out` directory (for example `scene_28_1/`). Use that path as the viewer `--root-dir`.
 
 ## Environment Setup
 
@@ -154,7 +154,7 @@ From the dataset viewer folder:
 
 ```bash
 uv run python entrypoint.py \
-  --root-dir /PATH/TO/TruckDrive_download/TruckDrive \
+  --root-dir /PATH/TO/TruckDrive_download \
   --recording scene_28_1
 ```
 

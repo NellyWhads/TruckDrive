@@ -64,7 +64,7 @@ Add `--unzip` to extract each modality zip into the scene layout used by the [da
   -y
 ```
 
-After a download with `--unzip`, point the viewer at `--root-dir /PATH/TO/TruckDrive_download/TruckDrive` (the `TruckDrive/` folder inside your output directory).
+After a download with `--unzip`, point the viewer at `--root-dir /PATH/TO/TruckDrive_download` (the same directory you passed to `--out`).
 
 By default, the script uses aria2c automatically if it is installed, with --jobs 4 and --aria2-connections 8, otherwise it defaults to curl (slower).
 
