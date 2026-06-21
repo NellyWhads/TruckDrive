@@ -117,18 +117,35 @@ Downloads are stored as `TruckDrive/<scene>/` under your output directory. Use t
 
 ## Environment Setup
 
+### uv (recommended)
+
 Install [uv](https://docs.astral.sh/uv/), then from this directory (`dataset_viewer/`):
 
 ```bash
 uv sync
 ```
 
-This creates a local `.venv` with **Python 3.11** and installs pinned dependencies from `pyproject.toml` (aligned with the original conda-forge README: NumPy 1.26, Open3D 0.18, PyQt5, etc.). Re-run `uv sync` after pulling changes to refresh the lockfile.
+This creates a local `.venv` with **Python 3.11** and installs pinned dependencies from `pyproject.toml` / `uv.lock`. Re-run `uv sync` after pulling changes to refresh the lockfile.
 
 Optional video export backends:
 
 ```bash
 uv sync --extra video
+```
+
+### Conda (alternative)
+
+The original conda-forge workflow is captured in `environment.yml` (Python 3.11, same package set, Open3D via pip):
+
+```bash
+conda env create -f environment.yml
+conda activate truckdrive_visualizer
+```
+
+Optional video export backends:
+
+```bash
+python -m pip install "imageio[ffmpeg]" "imageio[pyav]"
 ```
 
 ## Running the Viewer

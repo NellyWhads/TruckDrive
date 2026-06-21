@@ -1,0 +1,29 @@
+# Reproducible Conda environment for the TruckDrive dataset viewer.
+# Equivalent to the original README conda-forge setup (Python 3.11, conda-forge
+# packages, Open3D via pip). Pins match the tested uv.lock stack.
+#
+# Create and activate:
+#   conda env create -f environment.yml
+#   conda activate truckdrive_visualizer
+#
+# Optional video export (after activate):
+#   python -m pip install "imageio[ffmpeg]" "imageio[pyav]"
+
+name: truckdrive_visualizer
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11.11
+  - numpy=1.26.4
+  - pandas=2.2.3
+  - scipy=1.14.1
+  - scikit-learn=1.5.2
+  - matplotlib=3.9.4
+  - pillow=10.4.0
+  - shapely=2.0.7
+  - pyquaternion=0.9.9
+  - pyqt=5.15.11
+  - imageio=2.36.1
+  - pip
+  - pip:
+      - open3d==0.19.0
